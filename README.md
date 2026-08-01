@@ -34,6 +34,15 @@ const status = await amc.getRunnerStatus() // public, no auth needed
 - `getRunnerStatus()` — public, unauthenticated GPU/runner snapshot.
 - `triggerWarmUp()` — best-effort wake nudge; never rejects.
 
+## API docs
+
+An OpenAPI 3.1 spec for the endpoints this client calls is generated from
+[`src/openapi.ts`](src/openapi.ts) via `pnpm run docs:openapi`, and rendered with
+Swagger UI at [`docs/index.html`](docs/index.html). A GitHub Actions workflow
+([`.github/workflows/docs.yml`](.github/workflows/docs.yml)) regenerates the spec and
+publishes `docs/` to GitHub Pages on every push to `main` — enable Pages for this repo
+with source "GitHub Actions" for it to take effect.
+
 ## Publishing
 
 Private package, published to GitHub Packages under the `@jackwaddington` scope (see
