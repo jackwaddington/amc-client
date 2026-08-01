@@ -31,6 +31,15 @@ const amc = createAmcClient({
 const group = await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.')
 const job = await amc.getJob(group.jobs[0].id) // output/metrics merged in once complete
 const status = await amc.getRunnerStatus() // public, no auth needed
+
+const [project] = await amc.listProjects()
+const [agent] = await amc.listAgents(project.id)
+const batch = await amc.submitBatch({
+  promptIds: ['prompt-1'],
+  modelIds: ['llama3.2:latest'],
+  agentId: agent.id,
+})
+await amc.createNote({ level: 'project', projectId: project.id }, 'Kicked off the batch above.')
 ```
 
 ## API
@@ -43,6 +52,17 @@ const status = await amc.getRunnerStatus() // public, no auth needed
   neither natively.
 - `getRunnerStatus()` — public, unauthenticated GPU/runner snapshot.
 - `triggerWarmUp()` — best-effort wake nudge; never rejects.
+- `listProjects(options?)` / `getProject(projectId)` — read-only. A Project API key
+  cannot create or update Projects on any AMC surface (REST or MCP), so this client has
+  no such method either — see [Scope](#scope).
+- `listAgents(projectId, options?)` / `getAgent(projectId, agentId)` — read-only, same
+  restriction as Projects.
+- `listBatches(projectId?)` / `getBatch(batchId)` / `submitBatch(input, projectId?)` —
+  full read/write; omit `projectId` to use the key's own Project.
+- `listNotes(target)` / `createNote(target, body)` / `updateNote(noteId, body)` /
+  `deleteNote(noteId)` — full read/write. `target` is `{ level: 'project' | 'group' | 'job', ... }`
+  identifying what the Note attaches to; `author` is always derived server-side from the
+  credential, never sent by the client.
 
 ## Error handling
 
@@ -63,11 +83,17 @@ try {
 
 ## Scope
 
-This client wraps the subset of AMC's HTTP API needed for one-off raw model calls plus
-job/runner status — it does not yet cover Projects, Agents, or Batches. For a full
-programmatic surface (including Project/Agent management), see AMC's
-[remote MCP server](https://amc.jackwaddington.com); for the complete HTTP surface
-underneath both, see the [API reference](https://jackwaddington.github.io/amc-client/).
+This client wraps one-off raw model calls, job/runner status, read access to Projects
+and Agents, and full read/write on Batches and Notes. It does **not** cover Project or
+Agent creation/updates: this client always authenticates as a Project API key, and AMC
+rejects Project/Agent administration from that credential on every surface (REST and
+MCP alike) — only a human console session, or an MCP client holding a user-consented
+`mcp:admin` OAuth grant, can create or update a Project or Agent. See
+[`docs/api/command-surfaces.md`](https://github.com/jackwaddington/amc/blob/main/docs/api/command-surfaces.md)
+in the main AMC repo for the full REST/MCP/SDK breakdown and why. For that fuller
+programmatic surface, see AMC's [remote MCP server](https://amc.jackwaddington.com); for
+the complete HTTP surface underneath both, see the
+[API reference](https://jackwaddington.github.io/amc-client/).
 
 ## API docs
 

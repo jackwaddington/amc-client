@@ -168,4 +168,172 @@ describe('createAmcClient', () => {
 
     await expect(amc.triggerWarmUp()).resolves.toBeUndefined()
   })
+
+  it('lists projects with an optional status filter', async () => {
+    const projects = [{ id: 'project-1', name: 'Dispatch Demo' }]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(projects))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.listProjects({ status: 'archived' })
+
+    expect(result).toEqual(projects)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.test/api/projects?status=archived')
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer amc_sk_test' })
+  })
+
+  it('lists projects with no query string when no status is given', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([]))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.listProjects()
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/projects')
+  })
+
+  it('fetches one project by id', async () => {
+    const project = { id: 'project-1', name: 'Dispatch Demo' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(project))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getProject('project-1')
+
+    expect(result).toEqual(project)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/projects/project-1')
+  })
+
+  it('lists agents for a project with an optional status filter', async () => {
+    const agents = [{ id: 'agent-1', name: 'Dispatcher' }]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(agents))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.listAgents('project-1', { status: 'all' })
+
+    expect(result).toEqual(agents)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/projects/project-1/agents?status=all')
+  })
+
+  it('fetches one agent by id', async () => {
+    const agent = { id: 'agent-1', name: 'Dispatcher' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(agent))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getAgent('project-1', 'agent-1')
+
+    expect(result).toEqual(agent)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/projects/project-1/agents/agent-1')
+  })
+
+  it('lists batches, optionally scoped to a project', async () => {
+    const batches = [{ id: 'batch-1', status: 'complete' }]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(batches))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.listBatches('project-1')
+
+    expect(result).toEqual(batches)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/batches?projectId=project-1')
+  })
+
+  it('fetches one batch by id', async () => {
+    const batch = { id: 'batch-1', status: 'complete', groups: [] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(batch))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getBatch('batch-1')
+
+    expect(result).toEqual(batch)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/batches/batch-1')
+  })
+
+  it('submits a batch, including projectId in the body only when given', async () => {
+    const input = { promptIds: ['prompt-1'], modelIds: ['llama3.2:latest'], agentId: 'agent-1' }
+    const batch = { id: 'batch-1', groupCount: 1 }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(batch, 201))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.submitBatch(input, 'project-1')
+
+    expect(result).toEqual(batch)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.test/api/batches')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ ...input, projectId: 'project-1' })
+  })
+
+  it('submits a batch without a projectId field when none is given', async () => {
+    const input = { promptIds: ['prompt-1'], modelIds: ['llama3.2:latest'], agentId: 'agent-1' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ id: 'batch-1', groupCount: 1 }, 201))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitBatch(input)
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(JSON.parse(init?.body as string)).toEqual(input)
+  })
+
+  it.each([
+    [{ level: 'project' as const, projectId: 'project-1' }, 'https://api.test/api/projects/project-1/notes'],
+    [{ level: 'group' as const, jobGroupId: 'group-1' }, 'https://api.test/api/job-groups/group-1/notes'],
+    [{ level: 'job' as const, jobId: 'job-1' }, 'https://api.test/api/jobs/job-1/notes'],
+  ])('lists notes for target %o at the right route', async (target, expectedUrl) => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([]))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.listNotes(target)
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(expectedUrl)
+  })
+
+  it('appends a scope query param only for project-level note listings', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([]))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.listNotes({ level: 'project', projectId: 'project-1', scope: 'all' })
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/projects/project-1/notes?scope=all')
+  })
+
+  it.each([
+    [{ level: 'project' as const, projectId: 'project-1' }, 'https://api.test/api/projects/project-1/notes'],
+    [{ level: 'group' as const, jobGroupId: 'group-1' }, 'https://api.test/api/job-groups/group-1/notes'],
+    [{ level: 'job' as const, jobId: 'job-1' }, 'https://api.test/api/jobs/job-1/notes'],
+  ])('creates a note for target %o at the right route, sending only the body', async (target, expectedUrl) => {
+    const note = { id: 'note-1', body: 'Called back, no answer.' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(note, 201))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.createNote(target, 'Called back, no answer.')
+
+    expect(result).toEqual(note)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe(expectedUrl)
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ body: 'Called back, no answer.' })
+  })
+
+  it('updates a note by id', async () => {
+    const note = { id: 'note-1', body: 'Updated.' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(note))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.updateNote('note-1', 'Updated.')
+
+    expect(result).toEqual(note)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.test/api/notes/note-1')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse(init?.body as string)).toEqual({ body: 'Updated.' })
+  })
+
+  it('deletes a note by id', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await expect(amc.deleteNote('note-1')).resolves.toBeUndefined()
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.test/api/notes/note-1')
+    expect(init?.method).toBe('DELETE')
+  })
 })

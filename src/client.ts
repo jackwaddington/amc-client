@@ -1,4 +1,17 @@
-import type { Job, JobGroup, RunnerStatus, JobMetric } from './types.js'
+import type {
+  Job,
+  JobGroup,
+  RunnerStatus,
+  JobMetric,
+  Project,
+  Agent,
+  Batch,
+  BatchDetail,
+  BatchSubmitInput,
+  Note,
+  NoteTarget,
+  NoteListTarget,
+} from './types.js'
 
 export class AmcApiError extends Error {
   readonly status: number
@@ -33,6 +46,37 @@ export interface AmcClient {
   /** Best-effort GPU wake-up nudge. Silently no-ops on any failure (missing endpoint,
    *  network error, etc.) — callers should never need to handle this rejecting. */
   triggerWarmUp(): Promise<void>
+
+  /** Lists Projects visible to this API key (a Project-scoped key sees only its own).
+   *  Read-only: a Project API key cannot create or update Projects on any AMC surface
+   *  (REST or MCP), so this client has no such method either. */
+  listProjects(options?: { status?: 'active' | 'archived' }): Promise<Project[]>
+  /** Fetches one Project by id. */
+  getProject(projectId: string): Promise<Project>
+
+  /** Lists Agents configured on a Project. Read-only — same Project-API-key
+   *  restriction on writes as `listProjects`. */
+  listAgents(projectId: string, options?: { status?: 'active' | 'archived' | 'all' }): Promise<Agent[]>
+  /** Fetches one Agent by id. */
+  getAgent(projectId: string, agentId: string): Promise<Agent>
+
+  /** Lists Batches. Omit `projectId` to use the key's own Project. */
+  listBatches(projectId?: string): Promise<Batch[]>
+  /** Fetches one Batch, including its job groups and jobs. */
+  getBatch(batchId: string): Promise<BatchDetail>
+  /** Submits a matrix Batch (prompt/model/etc. combinations against one Agent).
+   *  Omit `projectId` to use the key's own Project. */
+  submitBatch(input: BatchSubmitInput, projectId?: string): Promise<BatchDetail & { groupCount: number }>
+
+  /** Lists Notes attached to a Project, JobGroup, or Job. */
+  listNotes(target: NoteListTarget): Promise<Note[]>
+  /** Creates a Note on a Project, JobGroup, or Job. `author` is derived server-side
+   *  from the credential — never sent by the client. */
+  createNote(target: NoteTarget, body: string): Promise<Note>
+  /** Updates a Note's body. */
+  updateNote(noteId: string, body: string): Promise<Note>
+  /** Deletes a Note. */
+  deleteNote(noteId: string): Promise<void>
 }
 
 interface JobLogEntry {
@@ -119,5 +163,77 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
         // Best-effort only: missing endpoint, network failure, etc. are all fine to ignore.
       }
     },
+
+    listProjects(options) {
+      const query = options?.status ? `?status=${options.status}` : ''
+      return request<Project[]>(`/api/projects${query}`, { auth: true })
+    },
+
+    getProject(projectId) {
+      return request<Project>(`/api/projects/${projectId}`, { auth: true })
+    },
+
+    listAgents(projectId, options) {
+      const query = options?.status ? `?status=${options.status}` : ''
+      return request<Agent[]>(`/api/projects/${projectId}/agents${query}`, { auth: true })
+    },
+
+    getAgent(projectId, agentId) {
+      return request<Agent>(`/api/projects/${projectId}/agents/${agentId}`, { auth: true })
+    },
+
+    listBatches(projectId) {
+      const query = projectId ? `?projectId=${projectId}` : ''
+      return request<Batch[]>(`/api/batches${query}`, { auth: true })
+    },
+
+    getBatch(batchId) {
+      return request<BatchDetail>(`/api/batches/${batchId}`, { auth: true })
+    },
+
+    submitBatch(input, projectId) {
+      return request<BatchDetail & { groupCount: number }>('/api/batches', {
+        method: 'POST',
+        auth: true,
+        body: JSON.stringify(projectId ? { ...input, projectId } : input),
+      })
+    },
+
+    listNotes(target) {
+      const query = target.level === 'project' && target.scope ? `?scope=${target.scope}` : ''
+      const path = noteCollectionPath(target)
+      return request<Note[]>(`${path}${query}`, { auth: true })
+    },
+
+    createNote(target, body) {
+      return request<Note>(noteCollectionPath(target), {
+        method: 'POST',
+        auth: true,
+        body: JSON.stringify({ body }),
+      })
+    },
+
+    updateNote(noteId, body) {
+      return request<Note>(`/api/notes/${noteId}`, {
+        method: 'PATCH',
+        auth: true,
+        body: JSON.stringify({ body }),
+      })
+    },
+
+    async deleteNote(noteId) {
+      await request<void>(`/api/notes/${noteId}`, { method: 'DELETE', auth: true })
+    },
+  }
+}
+
+function noteCollectionPath(target: NoteTarget): string {
+  switch (target.level) {
+    case 'project':
+      return `/api/projects/${target.projectId}/notes`
+    case 'group':
+      return `/api/job-groups/${target.jobGroupId}/notes`
+    case 'job':
+      return `/api/jobs/${target.jobId}/notes`
   }
 }
