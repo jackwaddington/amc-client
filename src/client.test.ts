@@ -126,13 +126,36 @@ describe('createAmcClient', () => {
   })
 
   it('fetches public runner status without an auth header', async () => {
-    const status = { online: true, queuedJobs: 2, runningJobs: 1 }
+    const status = {
+      online: true,
+      state: 'busy',
+      serverStatus: 'online',
+      queuedJobs: 2,
+      runningJobs: 1,
+      gpuName: 'RTX 5060 Ti',
+      vramMb: 16_384,
+      defaultModel: 'qwen2.5:7b',
+      models: [],
+      runners: [{
+        runnerId: 'gpu-01',
+        state: 'busy',
+        wakeable: true,
+        warmModel: 'qwen2.5:7b',
+        gpuName: 'RTX 5060 Ti',
+        vramMb: 16_384,
+        lastHeartbeatAt: '2026-08-01T10:00:00.000Z',
+      }],
+    }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(status))
     const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
 
     const result = await amc.getRunnerStatus()
 
+    // The type used to declare only online/queuedJobs/runningJobs while the API
+    // returned all of this, so callers could not reach it without casting.
     expect(result).toEqual(status)
+    expect(result.state).toBe('busy')
+    expect(result.runners[0]!.wakeable).toBe(true)
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(init?.headers).not.toHaveProperty('Authorization')
   })
@@ -153,20 +176,6 @@ describe('createAmcClient', () => {
     const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
 
     await expect(amc.getRunnerStatus()).rejects.toMatchObject({ name: 'AmcApiError', status: 0 })
-  })
-
-  it('triggerWarmUp silently no-ops when the endpoint does not exist yet (404)', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 404 }))
-    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
-
-    await expect(amc.triggerWarmUp()).resolves.toBeUndefined()
-  })
-
-  it('triggerWarmUp silently no-ops on a network failure', async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
-
-    await expect(amc.triggerWarmUp()).resolves.toBeUndefined()
   })
 
   it('lists projects with an optional status filter', async () => {

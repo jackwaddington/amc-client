@@ -27,10 +27,54 @@ export interface JobGroup {
   jobs: Job[]
 }
 
+/** The canonical runner state (AMC ADR 0016). Prefer this over `serverStatus`:
+ *  it is the only field that distinguishes a machine resting between jobs
+ *  (`asleep`, wakes on demand) from one that has actually fallen over
+ *  (`unreachable`). */
+export type RunnerState =
+  | 'unknown'
+  | 'asleep'
+  | 'waking'
+  | 'starting'
+  | 'idle'
+  | 'busy'
+  | 'unreachable'
+
+export interface RunnerModelState {
+  name: string
+  state: 'loaded' | 'loading'
+  observedAt: string | null
+  sizeVramBytes: number | null
+  expiresAt: string | null
+  lastLoadDurationMs: number | null
+}
+
+export interface RunnerFleetMember {
+  runnerId: string
+  state: RunnerState
+  /** False for an always-on machine, which therefore can never be `asleep` or
+   *  `waking` — for those, silence always means a fault. */
+  wakeable: boolean
+  warmModel: string | null
+  gpuName: string | null
+  vramMb: number | null
+  lastHeartbeatAt: string | null
+}
+
 export interface RunnerStatus {
   online: boolean
+  state: RunnerState
+  /** Lossy three-value view of `state`, retained for backwards compatibility;
+   *  `asleep`, `unreachable` and `unknown` all collapse to `offline`. */
+  serverStatus: 'online' | 'offline' | 'wake_triggered'
   queuedJobs: number
   runningJobs: number
+  gpuName: string | null
+  vramMb: number | null
+  defaultModel: string | null
+  models: RunnerModelState[]
+  /** Per-runner detail. The scalar fields above are a rollup over this. */
+  runners: RunnerFleetMember[]
 }
 
 // Job/JobGroup/JobMetric/RunnerStatus above are a curated, hand-picked shape

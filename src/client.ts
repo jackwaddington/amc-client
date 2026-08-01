@@ -41,11 +41,9 @@ export interface AmcClient {
    *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
    *  record carries neither natively. */
   getJob(jobId: string): Promise<Job>
-  /** Public, unauthenticated — AMC's runner online/queued/running snapshot. */
+  /** Public, unauthenticated — AMC's runner fleet snapshot: canonical `state`, queue
+   *  counts, GPU, loaded models, and per-runner detail in `runners`. */
   getRunnerStatus(): Promise<RunnerStatus>
-  /** Best-effort GPU wake-up nudge. Silently no-ops on any failure (missing endpoint,
-   *  network error, etc.) — callers should never need to handle this rejecting. */
-  triggerWarmUp(): Promise<void>
 
   /** Lists Projects visible to this API key (a Project-scoped key sees only its own).
    *  Read-only: a Project API key cannot create or update Projects on any AMC surface
@@ -154,14 +152,6 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
 
     getRunnerStatus() {
       return request<RunnerStatus>('/api/public/runner-status')
-    },
-
-    async triggerWarmUp() {
-      try {
-        await request('/api/public/warm-up', { method: 'POST' })
-      } catch {
-        // Best-effort only: missing endpoint, network failure, etc. are all fine to ignore.
-      }
     },
 
     listProjects(options) {
