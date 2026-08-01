@@ -1,12 +1,22 @@
 # amc-client
 
-A server-only TypeScript client for AMC's HTTP API. Not a toolkit for building other
-clients — this *is* the client. Any app that talks to AMC (`amc-demo-template`,
-`amc-holiday-planner`, and future demos) imports this directly rather than
-hand-rolling its own fetch wrapper.
+[![npm](https://img.shields.io/npm/v/@jackwaddington/amc-client)](https://www.npmjs.com/package/@jackwaddington/amc-client)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Extracted from `amc-demo-template`'s `lib/amc.ts` once that repo's usage was proven
-against the real AMC backend — see its `PROGRESS.md` for the history.
+A TypeScript client for [AMC](https://amc.jackwaddington.com)'s HTTP API — submit a
+prompt, poll a job to completion, and check whether the runner is online. Server-side
+only: it needs your AMC API key, which must never reach a browser bundle.
+
+## Install
+
+```sh
+npm install @jackwaddington/amc-client
+```
+
+## Getting an API key
+
+Create a Project in the AMC console, then generate an API key from that project's
+Settings tab. Keys are scoped to a single project and can be revoked at any time.
 
 ## Usage
 
@@ -23,7 +33,7 @@ const job = await amc.getJob(group.jobs[0].id) // output/metrics merged in once 
 const status = await amc.getRunnerStatus() // public, no auth needed
 ```
 
-## What's in it
+## API
 
 - `submitRaw(model, prompt, systemPrompt)` — one raw Ollama call, no AMC Agent required.
   This is the only submission path that allows a per-call system prompt override; AMC's
@@ -34,17 +44,47 @@ const status = await amc.getRunnerStatus() // public, no auth needed
 - `getRunnerStatus()` — public, unauthenticated GPU/runner snapshot.
 - `triggerWarmUp()` — best-effort wake nudge; never rejects.
 
+## Error handling
+
+Failed requests reject with `AmcApiError`, carrying the HTTP `status` and any parsed
+response `data`:
+
+```ts
+import { AmcApiError, createAmcClient } from '@jackwaddington/amc-client'
+
+try {
+  await amc.getJob('does-not-exist')
+} catch (error) {
+  if (error instanceof AmcApiError) {
+    console.error(error.status, error.message, error.data)
+  }
+}
+```
+
+## Scope
+
+This client wraps the subset of AMC's HTTP API needed for one-off raw model calls plus
+job/runner status — it does not yet cover Projects, Agents, or Batches. For a full
+programmatic surface (including Project/Agent management), see AMC's
+[remote MCP server](https://amc.jackwaddington.com); for the complete HTTP surface
+underneath both, see the [API reference](https://jackwaddington.github.io/amc-client/).
+
 ## API docs
 
 An OpenAPI 3.1 spec for the endpoints this client calls is generated from
 [`src/openapi.ts`](src/openapi.ts) via `pnpm run docs:openapi`, and rendered with
-Swagger UI at [`docs/index.html`](docs/index.html). A GitHub Actions workflow
-([`.github/workflows/docs.yml`](.github/workflows/docs.yml)) regenerates the spec and
-publishes `docs/` to GitHub Pages on every push to `main` — enable Pages for this repo
-with source "GitHub Actions" for it to take effect.
+Swagger UI at [`docs/index.html`](docs/index.html), published to
+[jackwaddington.github.io/amc-client](https://jackwaddington.github.io/amc-client/) on
+every push to `main`.
 
-## Publishing
+## Contributing / development
 
-Private package, published to GitHub Packages under the `@jackwaddington` scope (see
-`publishConfig` in `package.json`). Consumers need a `.npmrc` pointing that scope at
-`npm.pkg.github.com` and a GitHub token with `read:packages`.
+```sh
+pnpm install
+pnpm test
+pnpm run build
+```
+
+## License
+
+[MIT](LICENSE)
