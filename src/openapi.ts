@@ -42,12 +42,44 @@ const JobGroup = registry.register(
   }),
 )
 
+const RunnerState = z.enum([
+  'unknown',
+  'asleep',
+  'waking',
+  'starting',
+  'idle',
+  'busy',
+  'unreachable',
+])
+
 const RunnerStatus = registry.register(
   'RunnerStatus',
   z.object({
     online: z.boolean(),
+    state: RunnerState,
+    serverStatus: z.enum(['online', 'offline', 'wake_triggered']),
     queuedJobs: z.number(),
     runningJobs: z.number(),
+    gpuName: z.string().nullable(),
+    vramMb: z.number().nullable(),
+    defaultModel: z.string().nullable(),
+    models: z.array(z.object({
+      name: z.string(),
+      state: z.enum(['loaded', 'loading']),
+      observedAt: z.string().nullable(),
+      sizeVramBytes: z.number().nullable(),
+      expiresAt: z.string().nullable(),
+      lastLoadDurationMs: z.number().nullable(),
+    })),
+    runners: z.array(z.object({
+      runnerId: z.string(),
+      state: RunnerState,
+      wakeable: z.boolean(),
+      warmModel: z.string().nullable(),
+      gpuName: z.string().nullable(),
+      vramMb: z.number().nullable(),
+      lastHeartbeatAt: z.string().nullable(),
+    })),
   }),
 )
 
@@ -286,18 +318,6 @@ registry.registerPath({
   },
 })
 
-registry.registerPath({
-  method: 'post',
-  path: '/api/public/warm-up',
-  summary: 'Trigger a warm-up',
-  description:
-    'Best-effort GPU wake-up nudge, public and unauthenticated. This client silently no-ops on ' +
-    'any failure — callers should never need to handle this rejecting.',
-  tags: ['Runner'],
-  responses: {
-    200: { description: 'Warm-up accepted.' },
-  },
-})
 
 registry.registerPath({
   method: 'get',
