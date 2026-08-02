@@ -42,6 +42,32 @@ const batch = await amc.submitBatch({
 await amc.createNote({ level: 'project', projectId: project.id }, 'Kicked off the batch above.')
 ```
 
+## OpenAI-compatible endpoint (no SDK needed)
+
+If the caller already speaks the OpenAI API — LangChain, Open WebUI, the `openai`
+package itself, plain curl — it doesn't need this SDK at all. Point its `base_url` at
+AMC and use an AMC API key as the bearer token; calls are answered synchronously and
+still recorded as a job — prompt, response, timing, and token metrics land in the
+console like any other run.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="https://amc.jackwaddington.com/v1", api_key="amc_sk_...")
+r = client.chat.completions.create(
+    model="gemma3:1b",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+- `POST /v1/chat/completions` — synchronous, non-streaming (`stream: true` returns a
+  400 for now); standard `choices[].message.content` / `usage.*` response shape.
+- `GET /v1/models` — model list in OpenAI's shape, for model-picker UIs.
+
+Reach for this when the goal is "plug AMC into something that already talks OpenAI."
+Use this SDK instead when you want AMC's own job/agent/batch model: async submission
+you poll, a per-call system-prompt override, Batches, Notes, and runner status.
+
 ## API
 
 - `submitRaw(model, prompt, systemPrompt)` — one raw Ollama call, no AMC Agent required.
