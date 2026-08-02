@@ -12,6 +12,7 @@ import type {
   NoteTarget,
   NoteListTarget,
 } from './types.js'
+import { openEventStream } from './sseStream.js'
 
 export class AmcApiError extends Error {
   readonly status: number
@@ -44,6 +45,21 @@ export interface AmcClient {
   /** Public, unauthenticated — AMC's runner fleet snapshot: canonical `state`, queue
    *  counts, GPU, loaded models, and per-runner detail in `runners`. */
   getRunnerStatus(): Promise<RunnerStatus>
+  /** Public, unauthenticated — subscribes to live runner status over SSE instead of
+   *  polling `getRunnerStatus()`. `onUpdate` fires with the full snapshot on connect and
+   *  on every subsequent change; reconnects automatically (both on AMC's routine ~55-minute
+   *  connection rotation and on unexpected drops, the latter with capped backoff). A 404
+   *  (live updates disabled server-side) calls `onError` once and stops — this method never
+   *  falls back to polling on its own. Returns a function that closes the subscription. */
+  watchRunnerStatus(onUpdate: (status: RunnerStatus) => void, onError?: (error: AmcApiError) => void): () => void
+
+  /** Subscribes to live updates for one job over SSE instead of polling `getJob()`. AMC's
+   *  job event stream is project-wide, not per-job, so this filters client-side to `jobId`
+   *  and re-fetches via `getJob()` on every matching event (and on connect/reconnect) — the
+   *  stream itself carries only status/log/metric pointers, never the content. A 401/403/404
+   *  from the stream's handshake calls `onError` once and stops; this method never falls back
+   *  to polling on its own. Returns a function that closes the subscription. */
+  watchJob(jobId: string, onUpdate: (job: Job) => void, onError?: (error: AmcApiError) => void): () => void
 
   /** Lists Projects visible to this API key (a Project-scoped key sees only its own).
    *  Read-only: a Project API key cannot create or update Projects on any AMC surface
@@ -121,6 +137,26 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
     return body as T
   }
 
+  async function fetchJob(jobId: string): Promise<Job> {
+    const job = await request<Job>(`/api/jobs/${jobId}`, { auth: true })
+    if (job.status !== 'complete') {
+      return job
+    }
+
+    const [logs, metrics] = await Promise.all([
+      request<JobLogEntry[]>(`/api/jobs/${jobId}/logs`, { auth: true }),
+      request<JobMetric[]>(`/api/jobs/${jobId}/metrics`, { auth: true }),
+    ])
+    const response = [...logs].reverse().find((entry) => entry.type === 'response')
+    const metric = metrics.at(-1)
+
+    return {
+      ...job,
+      ...(response ? { output: response.content } : {}),
+      ...(metric ? { metrics: metric } : {}),
+    }
+  }
+
   return {
     submitRaw(model, prompt, systemPrompt) {
       return request<JobGroup>('/api/jobs/raw', {
@@ -130,28 +166,76 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
       })
     },
 
-    async getJob(jobId) {
-      const job = await request<Job>(`/api/jobs/${jobId}`, { auth: true })
-      if (job.status !== 'complete') {
-        return job
-      }
-
-      const [logs, metrics] = await Promise.all([
-        request<JobLogEntry[]>(`/api/jobs/${jobId}/logs`, { auth: true }),
-        request<JobMetric[]>(`/api/jobs/${jobId}/metrics`, { auth: true }),
-      ])
-      const response = [...logs].reverse().find((entry) => entry.type === 'response')
-      const metric = metrics.at(-1)
-
-      return {
-        ...job,
-        ...(response ? { output: response.content } : {}),
-        ...(metric ? { metrics: metric } : {}),
-      }
+    getJob(jobId) {
+      return fetchJob(jobId)
     },
 
     getRunnerStatus() {
       return request<RunnerStatus>('/api/public/runner-status')
+    },
+
+    watchRunnerStatus(onUpdate, onError) {
+      return openEventStream(
+        '/api/public/runner-status/events',
+        { baseUrl, apiKey: config.apiKey, auth: false },
+        (frame) => {
+          if (frame.event === 'runner.status.changed') {
+            onUpdate((frame.data as { status: RunnerStatus }).status)
+          }
+        },
+        (err) => onError?.(new AmcApiError(err.status, err.message, err.data)),
+      )
+    },
+
+    watchJob(jobId, onUpdate, onError) {
+      let closed = false
+      let refreshing = false
+      let refreshAgain = false
+
+      function refresh() {
+        if (refreshing) {
+          refreshAgain = true
+          return
+        }
+        refreshing = true
+        fetchJob(jobId)
+          .then((job) => {
+            if (!closed) onUpdate(job)
+          })
+          .catch((err: unknown) => {
+            if (closed) return
+            onError?.(err instanceof AmcApiError ? err : new AmcApiError(0, 'Failed to refresh job', err))
+          })
+          .finally(() => {
+            refreshing = false
+            if (refreshAgain) {
+              refreshAgain = false
+              refresh()
+            }
+          })
+      }
+
+      const jobEventTypes = new Set(['job.status.changed', 'job.log.appended', 'job.metrics.appended'])
+
+      const stop = openEventStream(
+        '/api/events/jobs',
+        { baseUrl, apiKey: config.apiKey, auth: true },
+        (frame) => {
+          if (frame.event === 'stream.ready') {
+            refresh()
+            return
+          }
+          if (jobEventTypes.has(frame.event) && (frame.data as { jobId: string }).jobId === jobId) {
+            refresh()
+          }
+        },
+        (err) => onError?.(new AmcApiError(err.status, err.message, err.data)),
+      )
+
+      return () => {
+        closed = true
+        stop()
+      }
     },
 
     listProjects(options) {

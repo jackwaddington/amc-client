@@ -93,6 +93,44 @@ you poll, a per-call system-prompt override, Batches, Notes, and runner status.
   identifying what the Note attaches to; `author` is always derived server-side from the
   credential, never sent by the client.
 
+## Live updates (SSE)
+
+`watchRunnerStatus` and `watchJob` subscribe to AMC's live event streams instead of
+polling `getRunnerStatus()` / `getJob()` in a loop. Both return a function that closes
+the subscription:
+
+```ts
+const stopStatus = amc.watchRunnerStatus(
+  (status) => console.log(status.state, status.gpuName),
+  (error) => console.error('runner status stream failed', error),
+)
+
+const stopJob = amc.watchJob(
+  group.jobs[0].id,
+  (job) => console.log(job.status, job.output),
+  (error) => console.error('job stream failed', error),
+)
+
+// later
+stopStatus()
+stopJob()
+```
+
+Reconnection is automatic — both on AMC's routine ~55-minute connection rotation and on
+unexpected drops (the latter with capped exponential backoff). Neither method falls back
+to polling on its own: a permanent failure (e.g. a 404 because live updates are disabled
+server-side, or a bad key) calls `onError` once and stops, and it's up to the caller to
+decide whether to fall back to `getRunnerStatus()` / `getJob()` themselves. `watchJob`'s
+underlying stream is project-wide rather than per-job, so it filters client-side and
+re-fetches via `getJob()` on any matching event — a caller subscribing to many jobs at
+once opens one connection per `watchJob` call, not a shared one.
+
+The event schema on the wire (`stream.ready`, `runner.status.changed`, `job.status.changed`,
+etc.) is internal and only versioned by a `version: 1` field for now, not a stabilized
+public contract — this is why `watchRunnerStatus`/`watchJob` hand you the same `RunnerStatus`/
+`Job` shapes as the rest of this SDK rather than the raw event envelope, and why it's worth
+treating the exact events as an implementation detail that could change.
+
 ## Error handling
 
 Failed requests reject with `AmcApiError`, carrying the HTTP `status` and any parsed

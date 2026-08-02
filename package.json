@@ -1,7 +1,7 @@
 {
   "name": "@jackwaddington/amc-client",
-  "version": "0.4.0",
-  "description": "TypeScript client for AMC's HTTP API — submit jobs, poll results, check runner status, and read/write Projects, Agents, Batches, and Notes.",
+  "version": "0.5.0",
+  "description": "TypeScript client for AMC's HTTP API — submit jobs, poll or subscribe to live results, check runner status, and read/write Projects, Agents, Batches, and Notes.",
   "type": "module",
   "packageManager": "pnpm@11.5.1",
   "license": "MIT",

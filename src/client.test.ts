@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAmcClient } from './client'
+import { controlledSseResponse, frame, sseResponse } from './sseHelpers'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+// Real (unmocked) macrotask tick — lets any pending microtask chain (stream reads,
+// fetch mocks, .then/.finally) settle before assertions, without needing fake timers.
+function flush() {
+  return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe('createAmcClient', () => {
@@ -158,6 +165,155 @@ describe('createAmcClient', () => {
     expect(result.runners[0]!.wakeable).toBe(true)
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(init?.headers).not.toHaveProperty('Authorization')
+  })
+
+  describe('watchRunnerStatus', () => {
+    it('subscribes without an Authorization header and delivers each snapshot, but not stream.ready itself', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        sseResponse([
+          frame('stream.ready', { stream: 'runner' }),
+          frame('runner.status.changed', { status: { online: true, state: 'idle' } }),
+        ]),
+      )
+      const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+      const updates: unknown[] = []
+      const close = amc.watchRunnerStatus((status) => updates.push(status))
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!
+      expect(url).toBe('https://api.test/api/public/runner-status/events')
+      expect(init?.headers).not.toHaveProperty('Authorization')
+
+      await flush()
+      expect(updates).toEqual([{ online: true, state: 'idle' }])
+      close()
+    })
+  })
+
+  describe('watchJob', () => {
+    it('subscribes with a bearer token and proactively fetches the job on connect', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(sseResponse([frame('stream.ready')]))
+        .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running' }))
+      const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+      const updates: unknown[] = []
+      const close = amc.watchJob('job-1', (job) => updates.push(job))
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!
+      expect(url).toBe('https://api.test/api/events/jobs')
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer amc_sk_test' })
+
+      await flush()
+      expect(vi.mocked(fetch).mock.calls[1]![0]).toBe('https://api.test/api/jobs/job-1')
+      expect(updates).toEqual([{ id: 'job-1', status: 'running' }])
+      close()
+    })
+
+    it('ignores events for a different jobId', async () => {
+      const c = controlledSseResponse()
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(c.response)
+        .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running' })) // proactive, on connect
+      const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+      const updates: unknown[] = []
+      const close = amc.watchJob('job-1', (job) => updates.push(job))
+
+      c.push(frame('stream.ready'))
+      await flush()
+      expect(updates).toHaveLength(1)
+
+      c.push(frame('job.status.changed', { jobId: 'job-2', patch: { status: 'complete' } }))
+      await flush()
+      expect(updates).toHaveLength(1)
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2) // no extra fetch for the other job
+
+      close()
+    })
+
+    it.each(['job.status.changed', 'job.log.appended', 'job.metrics.appended'])(
+      'refetches the job on a matching %s event',
+      async (eventType) => {
+        const c = controlledSseResponse()
+        vi.mocked(fetch)
+          .mockResolvedValueOnce(c.response)
+          .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running' })) // proactive, on connect
+          .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running', agentName: 'demo-agent' }))
+        const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+        const updates: unknown[] = []
+        const close = amc.watchJob('job-1', (job) => updates.push(job))
+
+        c.push(frame('stream.ready'))
+        await flush()
+        expect(updates).toHaveLength(1)
+
+        c.push(frame(eventType, { jobId: 'job-1' }))
+        await flush()
+        expect(updates).toHaveLength(2)
+        expect(updates[1]).toEqual({ id: 'job-1', status: 'running', agentName: 'demo-agent' })
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3)
+
+        close()
+      },
+    )
+
+    it('coalesces a burst of matching events into fewer getJob fetches than events', async () => {
+      const c = controlledSseResponse()
+      let resolveProactiveFetch!: (r: Response) => void
+      const proactiveFetch = new Promise<Response>((resolve) => {
+        resolveProactiveFetch = resolve
+      })
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(c.response)
+        .mockImplementationOnce(() => proactiveFetch)
+        .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running', agentName: 'demo-agent' }))
+
+      const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+      const updates: unknown[] = []
+      const close = amc.watchJob('job-1', (job) => updates.push(job))
+
+      c.push(frame('stream.ready'))
+      await flush()
+
+      c.push(frame('job.status.changed', { jobId: 'job-1', patch: { status: 'running' } }))
+      c.push(frame('job.log.appended', { jobId: 'job-1', logId: 'log-1' }))
+      c.push(frame('job.metrics.appended', { jobId: 'job-1', metricId: 'metric-1' }))
+      await flush()
+
+      // The proactive fetch is still in flight; none of the three burst events have
+      // triggered a new fetch yet — they coalesce onto a single trailing refresh.
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+
+      resolveProactiveFetch(jsonResponse({ id: 'job-1', status: 'running' }))
+      await flush()
+
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3)
+      expect(updates.at(-1)).toEqual({ id: 'job-1', status: 'running', agentName: 'demo-agent' })
+
+      close()
+    })
+
+    it('close() stops delivering further updates', async () => {
+      const c = controlledSseResponse()
+      vi.mocked(fetch)
+        .mockImplementationOnce((_url, init) => {
+          init?.signal?.addEventListener('abort', () => c.error())
+          return Promise.resolve(c.response)
+        })
+        .mockResolvedValueOnce(jsonResponse({ id: 'job-1', status: 'running' }))
+      const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+      const updates: unknown[] = []
+      const close = amc.watchJob('job-1', (job) => updates.push(job))
+
+      c.push(frame('stream.ready'))
+      await flush()
+      expect(updates).toHaveLength(1)
+
+      close()
+      await flush()
+
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2) // no reconnect, no further getJob fetch
+      expect(updates).toHaveLength(1)
+    })
   })
 
   it('throws an AmcApiError carrying status and parsed body on a non-2xx response', async () => {
