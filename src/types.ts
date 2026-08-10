@@ -27,10 +27,9 @@ export interface JobGroup {
   jobs: Job[]
 }
 
-/** The canonical runner state (AMC ADR 0016). Prefer this over `serverStatus`:
- *  it is the only field that distinguishes a machine resting between jobs
- *  (`asleep`, wakes on demand) from one that has actually fallen over
- *  (`unreachable`). */
+/** The canonical runner state (AMC ADR 0016). It is the only field that
+ *  distinguishes a machine resting between jobs (`asleep`, wakes on demand)
+ *  from one that has actually fallen over (`unreachable`). */
 export type RunnerState =
   | 'unknown'
   | 'asleep'
@@ -64,9 +63,6 @@ export interface RunnerFleetMember {
 export interface RunnerStatus {
   online: boolean
   state: RunnerState
-  /** Lossy three-value view of `state`, retained for backwards compatibility;
-   *  `asleep`, `unreachable` and `unknown` all collapse to `offline`. */
-  serverStatus: 'online' | 'offline' | 'wake_triggered'
   queuedJobs: number
   runningJobs: number
   gpuName: string | null

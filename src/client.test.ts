@@ -136,7 +136,6 @@ describe('createAmcClient', () => {
     const status = {
       online: true,
       state: 'busy',
-      serverStatus: 'online',
       queuedJobs: 2,
       runningJobs: 1,
       gpuName: 'RTX 5060 Ti',

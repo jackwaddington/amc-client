@@ -57,7 +57,6 @@ const RunnerStatus = registry.register(
   z.object({
     online: z.boolean(),
     state: RunnerState,
-    serverStatus: z.enum(['online', 'offline', 'wake_triggered']),
     queuedJobs: z.number(),
     runningJobs: z.number(),
     gpuName: z.string().nullable(),

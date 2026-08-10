@@ -77,10 +77,9 @@ you poll, a per-call system-prompt override, Batches, Notes, and runner status.
   content (as `output`) and the latest timing entry (as `metrics`) — AMC's job record has
   neither natively.
 - `getRunnerStatus()` — public, unauthenticated runner fleet snapshot. Read `state`
-  (`idle` / `busy` / `starting` / `waking` / `asleep` / `unreachable` / `unknown`) rather
-  than the older three-value `serverStatus`: only `state` separates a machine resting
-  between jobs, which wakes on demand, from one that has actually fallen over. `runners`
-  carries the same per-machine.
+  (`idle` / `busy` / `starting` / `waking` / `asleep` / `unreachable` / `unknown`): it
+  separates a machine resting between jobs, which wakes on demand, from one that has
+  actually fallen over. `runners` carries the same per-machine.
 - `listProjects(options?)` / `getProject(projectId)` — read-only. A Project API key
   cannot create or update Projects on any AMC surface (REST or MCP), so this client has
   no such method either — see [Scope](#scope).
