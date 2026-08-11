@@ -11,6 +11,7 @@ import type {
   Note,
   NoteTarget,
   NoteListTarget,
+  SubmitRawOptions,
 } from './types.js'
 import { openEventStream } from './sseStream.js'
 
@@ -36,8 +37,12 @@ export interface AmcClientConfig {
 export interface AmcClient {
   /** Submits a single raw Ollama call (model + prompt + systemPrompt, no agent) — the
    *  only submission path that lets the caller override the system prompt per call; AMC's
-   *  agent-based `/api/jobs` endpoint has no per-call systemPrompt override. */
-  submitRaw(model: string, prompt: string, systemPrompt: string): Promise<JobGroup>
+   *  agent-based `/api/jobs` endpoint has no per-call systemPrompt override.
+   *  `options.tag` stamps the Job_Group for later filter/group across submissions.
+   *  `options` also carries the standard Ollama sampling knobs (`temperatures` sweep,
+   *  `topK`, `topP`, `repeatPenalty`, `numPredict`, `mirostat`), forwarded to Ollama's
+   *  `options` object verbatim — omit any of them to use Ollama's own defaults. */
+  submitRaw(model: string, prompt: string, systemPrompt: string, options?: SubmitRawOptions): Promise<JobGroup>
   /** Fetches a job by id. Once it's `complete`, also fetches and merges in the response
    *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
    *  record carries neither natively. */
@@ -158,11 +163,22 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
   }
 
   return {
-    submitRaw(model, prompt, systemPrompt) {
+    submitRaw(model, prompt, systemPrompt, options) {
       return request<JobGroup>('/api/jobs/raw', {
         method: 'POST',
         auth: true,
-        body: JSON.stringify({ model, prompt, systemPrompt }),
+        body: JSON.stringify({
+          model,
+          prompt,
+          systemPrompt,
+          ...(options?.tag !== undefined ? { tag: options.tag } : {}),
+          ...(options?.temperatures !== undefined ? { temperatures: options.temperatures } : {}),
+          ...(options?.topK !== undefined ? { topK: options.topK } : {}),
+          ...(options?.topP !== undefined ? { topP: options.topP } : {}),
+          ...(options?.repeatPenalty !== undefined ? { repeatPenalty: options.repeatPenalty } : {}),
+          ...(options?.numPredict !== undefined ? { numPredict: options.numPredict } : {}),
+          ...(options?.mirostat !== undefined ? { mirostat: options.mirostat } : {}),
+        }),
       })
     },
 

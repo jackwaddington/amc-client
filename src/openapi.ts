@@ -38,6 +38,9 @@ const JobGroup = registry.register(
   z.object({
     id: z.string(),
     status: z.string(),
+    tag: z.string().max(100).nullable().optional().describe(
+      'Optional free-text stamp for grouping separate submissions at query time.',
+    ),
     jobs: z.array(Job),
   }),
 )
@@ -267,6 +270,22 @@ registry.registerPath({
             model: z.string(),
             prompt: z.string(),
             systemPrompt: z.string(),
+            tag: z.string().max(100).optional().describe(
+              'Optional free-text Job_Group tag stamped at submit time.',
+            ),
+            temperatures: z.array(z.number().min(0).max(2)).max(12).optional().describe(
+              'Temperature sweep — one job per value, for side-by-side comparison. Omit for a ' +
+                "single job at Ollama's default temperature.",
+            ),
+            topK: z.number().int().optional().describe('Ollama `options.top_k`.'),
+            topP: z.number().min(0).max(1).optional().describe('Ollama `options.top_p`.'),
+            repeatPenalty: z.number().optional().describe('Ollama `options.repeat_penalty`.'),
+            numPredict: z.number().int().min(-1).optional().describe(
+              'Ollama `options.num_predict` — max tokens to generate (-1 = no limit).',
+            ),
+            mirostat: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional().describe(
+              'Ollama `options.mirostat` — 0 = off, 1 = mirostat, 2 = mirostat2.',
+            ),
           }),
         },
       },

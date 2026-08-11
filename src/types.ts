@@ -24,7 +24,28 @@ export interface Job {
 export interface JobGroup {
   id: string
   status: string
+  /** Optional free-text stamp for grouping separate submissions at query time. */
+  tag?: string | null
   jobs: Job[]
+}
+
+export interface SubmitRawOptions {
+  /** Free-text Job_Group tag stamped at submit time for later filter/group. */
+  tag?: string
+  /** Temperature sweep: submit one job per value (up to 12) instead of a single call, so
+   *  outputs can be compared side by side. Each value must be within [0, 2]. Omit for a
+   *  single job with no temperature override (Ollama uses its own default). */
+  temperatures?: number[]
+  /** Ollama `options.top_k` — only consider the top-k most likely next tokens. */
+  topK?: number
+  /** Ollama `options.top_p` — nucleus sampling, in [0, 1]. */
+  topP?: number
+  /** Ollama `options.repeat_penalty` — penalize repeated tokens (>1.0 penalizes more). */
+  repeatPenalty?: number
+  /** Ollama `options.num_predict` — max tokens to generate (-1 = no limit). */
+  numPredict?: number
+  /** Ollama `options.mirostat` — 0 = off, 1 = mirostat, 2 = mirostat2. */
+  mirostat?: 0 | 1 | 2
 }
 
 /** The canonical runner state (AMC ADR 0016). It is the only field that

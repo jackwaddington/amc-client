@@ -43,6 +43,48 @@ describe('createAmcClient', () => {
     })
   })
 
+  it('forwards an optional tag on submitRaw', async () => {
+    const group = { id: 'group-1', status: 'approved', tag: 'session-a', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.', { tag: 'session-a' })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toEqual({
+      model: 'llama3.2:latest',
+      prompt: 'Fire at Main St',
+      systemPrompt: 'You are a dispatcher.',
+      tag: 'session-a',
+    })
+  })
+
+  it('forwards Ollama sampling options (temperatures sweep, topK, topP, repeatPenalty, numPredict, mirostat) on submitRaw', async () => {
+    const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.', {
+      temperatures: [0.2, 0.7],
+      topK: 40,
+      topP: 0.9,
+      repeatPenalty: 1.1,
+      numPredict: 256,
+      mirostat: 2,
+    })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toEqual({
+      model: 'llama3.2:latest',
+      prompt: 'Fire at Main St',
+      systemPrompt: 'You are a dispatcher.',
+      temperatures: [0.2, 0.7],
+      topK: 40,
+      topP: 0.9,
+      repeatPenalty: 1.1,
+      numPredict: 256,
+      mirostat: 2,
+    })
+  })
+
   it('defaults baseUrl to https://amc.jackwaddington.com when not given', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ online: true, queuedJobs: 0, runningJobs: 0 }))
     const amc = createAmcClient({ apiKey: 'amc_sk_test' })
