@@ -70,9 +70,15 @@ you poll, a per-call system-prompt override, Batches, Notes, and runner status.
 
 ## API
 
-- `submitRaw(model, prompt, systemPrompt)` — one raw Ollama call, no AMC Agent required.
-  This is the only submission path that allows a per-call system prompt override; AMC's
-  agent-based `/api/jobs` endpoint has none.
+- `submitRaw(model, prompt, systemPrompt, options?)` — one raw Ollama call, no AMC Agent
+  required. This is the only submission path that allows a per-call system prompt
+  override; AMC's agent-based `/api/jobs` endpoint has none. `options.tag` stamps a
+  free-text Job_Group tag for later filter/group. `options` also carries the standard
+  Ollama sampling knobs, forwarded to Ollama's `options` object verbatim: `temperatures`
+  (a sweep — one job per value, up to 12, for side-by-side comparison instead of a single
+  scalar `temperature`), `topK`, `topP`, `repeatPenalty`, `numPredict`, and `mirostat`.
+  Omit any of them to use Ollama's own defaults — this keeps a call built against AMC
+  portable to a direct Ollama endpoint or another provider that speaks the same options.
 - `getJob(jobId)` — fetches a job, and once it's `complete`, merges in the response log
   content (as `output`) and the latest timing entry (as `metrics`) — AMC's job record has
   neither natively.
