@@ -85,6 +85,41 @@ describe('createAmcClient', () => {
     })
   })
 
+  it('submits a job to an Agent with type:"agentic" so its tool-calling loop actually runs', async () => {
+    const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group, 202))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.submitJob('agent-1', 'Dundee Science Centre')
+
+    expect(result).toEqual(group)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.test/api/jobs')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toMatchObject({ Authorization: 'Bearer amc_sk_test' })
+    expect(JSON.parse(init?.body as string)).toEqual({
+      agentId: 'agent-1',
+      prompt: 'Dundee Science Centre',
+      type: 'agentic',
+    })
+  })
+
+  it('forwards optional tag and name on submitJob', async () => {
+    const group = { id: 'group-1', status: 'approved', tag: 'session-a', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group, 202))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitJob('agent-1', 'Dundee Science Centre', { tag: 'session-a', name: 'search-1' })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toEqual({
+      agentId: 'agent-1',
+      prompt: 'Dundee Science Centre',
+      type: 'agentic',
+      tag: 'session-a',
+      name: 'search-1',
+    })
+  })
+
   it('defaults baseUrl to https://amc.jackwaddington.com when not given', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ online: true, queuedJobs: 0, runningJobs: 0 }))
     const amc = createAmcClient({ apiKey: 'amc_sk_test' })

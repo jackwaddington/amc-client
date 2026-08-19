@@ -43,6 +43,14 @@ export interface AmcClient {
    *  `topK`, `topP`, `repeatPenalty`, `numPredict`, `mirostat`), forwarded to Ollama's
    *  `options` object verbatim — omit any of them to use Ollama's own defaults. */
   submitRaw(model: string, prompt: string, systemPrompt: string, options?: SubmitRawOptions): Promise<JobGroup>
+  /** Submits a job to one Agent, running its configured `tools`/`systemPrompt`/knowledge
+   *  bases — this is the only submission path that actually executes an Agent's tool-calling
+   *  loop (`geocode`, `web_search`, etc.). Always sends `type: "agentic"`; AMC's `/api/jobs`
+   *  silently accepts a request without it and still returns a Job, but routes it through a
+   *  plain single-shot completion with no tools run at all — the request would "succeed" but
+   *  never call any tool, so this method does not expose an option to omit it.
+   *  `options.tag` stamps the Job_Group for later filter/group across submissions. */
+  submitJob(agentId: string, prompt: string, options?: { tag?: string; name?: string }): Promise<JobGroup>
   /** Fetches a job by id. Once it's `complete`, also fetches and merges in the response
    *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
    *  record carries neither natively. */
@@ -178,6 +186,20 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
           ...(options?.repeatPenalty !== undefined ? { repeatPenalty: options.repeatPenalty } : {}),
           ...(options?.numPredict !== undefined ? { numPredict: options.numPredict } : {}),
           ...(options?.mirostat !== undefined ? { mirostat: options.mirostat } : {}),
+        }),
+      })
+    },
+
+    submitJob(agentId, prompt, options) {
+      return request<JobGroup>('/api/jobs', {
+        method: 'POST',
+        auth: true,
+        body: JSON.stringify({
+          agentId,
+          prompt,
+          type: 'agentic',
+          ...(options?.tag !== undefined ? { tag: options.tag } : {}),
+          ...(options?.name !== undefined ? { name: options.name } : {}),
         }),
       })
     },
