@@ -36,8 +36,10 @@ export interface AmcClientConfig {
 
 export interface AmcClient {
   /** Submits a single raw Ollama call (model + prompt + systemPrompt, no agent) — the
-   *  only submission path that lets the caller override the system prompt per call; AMC's
-   *  agent-based `/api/jobs` endpoint has no per-call systemPrompt override.
+   *  only submission path that lets the caller override the prompt slots per call; AMC's
+   *  agent-based `/api/jobs` endpoint has no per-call override for any of them.
+   *  `options.promptSuffix` and `options.assistantPrefill` fill the remaining two slots,
+   *  so all four parts of an Agent's prompt anatomy can be varied without creating one.
    *  `options.tag` stamps the Job_Group for later filter/group across submissions.
    *  `options` also carries the standard Ollama sampling knobs (`temperatures` sweep,
    *  `topK`, `topP`, `repeatPenalty`, `numPredict`, `mirostat`), forwarded to Ollama's
@@ -179,6 +181,9 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
           model,
           prompt,
           systemPrompt,
+          ...(options?.promptSuffix !== undefined ? { promptSuffix: options.promptSuffix } : {}),
+          ...(options?.assistantPrefill !== undefined ? { assistantPrefill: options.assistantPrefill } : {}),
+          ...(options?.name !== undefined ? { name: options.name } : {}),
           ...(options?.tag !== undefined ? { tag: options.tag } : {}),
           ...(options?.temperatures !== undefined ? { temperatures: options.temperatures } : {}),
           ...(options?.topK !== undefined ? { topK: options.topK } : {}),

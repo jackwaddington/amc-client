@@ -85,6 +85,54 @@ describe('createAmcClient', () => {
     })
   })
 
+  it('forwards promptSuffix, assistantPrefill and name on submitRaw', async () => {
+    const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.', {
+      promptSuffix: 'Answer in one sentence.',
+      assistantPrefill: 'Dispatch priority:',
+      name: 'Rung 2 prefill',
+    })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toEqual({
+      model: 'llama3.2:latest',
+      prompt: 'Fire at Main St',
+      systemPrompt: 'You are a dispatcher.',
+      promptSuffix: 'Answer in one sentence.',
+      assistantPrefill: 'Dispatch priority:',
+      name: 'Rung 2 prefill',
+    })
+  })
+
+  it('omits promptSuffix and assistantPrefill entirely when not supplied', async () => {
+    const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.')
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+    expect(body).not.toHaveProperty('promptSuffix')
+    expect(body).not.toHaveProperty('assistantPrefill')
+  })
+
+  it('forwards an empty-string assistantPrefill rather than dropping it', async () => {
+    const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await amc.submitRaw('llama3.2:latest', 'Fire at Main St', 'You are a dispatcher.', {
+      promptSuffix: '',
+      assistantPrefill: '',
+    })
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+    expect(body.promptSuffix).toBe('')
+    expect(body.assistantPrefill).toBe('')
+  })
+
   it('submits a job to an Agent with type:"agentic" so its tool-calling loop actually runs', async () => {
     const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group, 202))

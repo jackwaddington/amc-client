@@ -1,6 +1,6 @@
 {
   "name": "@jackwaddington/amc-client",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "TypeScript client for AMC's HTTP API — submit jobs, poll or subscribe to live results, check runner status, and read/write Projects, Agents, Batches, and Notes.",
   "type": "module",
   "packageManager": "pnpm@11.5.1",
@@ -12,7 +12,13 @@
   },
   "homepage": "https://jackwaddington.github.io/amc-client/",
   "bugs": "https://github.com/jackwaddington/amc-client/issues",
-  "keywords": ["amc", "sdk", "client", "ollama", "llm"],
+  "keywords": [
+    "amc",
+    "sdk",
+    "client",
+    "ollama",
+    "llm"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
