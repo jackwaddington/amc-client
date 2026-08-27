@@ -4,6 +4,7 @@ export type {
   Job,
   JobGroup,
   JobMetric,
+  JobLogEntry,
   RunnerStatus,
   RunnerState,
   RunnerModelState,

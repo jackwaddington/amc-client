@@ -133,6 +133,22 @@ describe('createAmcClient', () => {
     expect(body.assistantPrefill).toBe('')
   })
 
+  it('returns the full job timeline from getJobLogs, not just the response entry', async () => {
+    const logs = [
+      { id: 'l1', jobId: 'job-1', type: 'llm_call', content: 'assembled prompt', createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'l2', jobId: 'job-1', type: 'tool_call', content: '{"name":"calculator"}', createdAt: '2026-01-01T00:00:01Z' },
+      { id: 'l3', jobId: 'job-1', type: 'tool_result', content: '42', createdAt: '2026-01-01T00:00:02Z' },
+      { id: 'l4', jobId: 'job-1', type: 'response', content: 'The answer is 42.', createdAt: '2026-01-01T00:00:03Z' },
+    ]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(logs))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getJobLogs('job-1')
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://api.test/api/jobs/job-1/logs')
+    expect(result.map(entry => entry.type)).toEqual(['llm_call', 'tool_call', 'tool_result', 'response'])
+  })
+
   it('submits a job to an Agent with type:"agentic" so its tool-calling loop actually runs', async () => {
     const group = { id: 'group-1', status: 'approved', jobs: [{ id: 'job-1', status: 'approved' }] }
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(group, 202))

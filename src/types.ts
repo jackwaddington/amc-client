@@ -248,3 +248,17 @@ export interface Note {
   createdAt: string
   updatedAt: string
 }
+
+/** One entry in a Job's execution timeline. `type` is the event kind the runner
+ *  emitted — `skills_loaded`, `llm_call`, `tool_call`, `tool_result`, `response`
+ *  — and `content` its payload (the assembled prompt for `llm_call`, the tool's
+ *  arguments/return value for the tool pair). Kept as a plain string rather than
+ *  a union: the runner may emit kinds this client predates, and dropping them
+ *  would silently truncate a timeline. */
+export interface JobLogEntry {
+  id: string
+  jobId: string
+  type: string
+  content: string
+  createdAt: string
+}

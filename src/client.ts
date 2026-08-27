@@ -12,6 +12,7 @@ import type {
   NoteTarget,
   NoteListTarget,
   SubmitRawOptions,
+  JobLogEntry,
 } from './types.js'
 import { openEventStream } from './sseStream.js'
 
@@ -57,6 +58,11 @@ export interface AmcClient {
    *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
    *  record carries neither natively. */
   getJob(jobId: string): Promise<Job>
+  /** Fetches a Job's full execution timeline, oldest first. `getJob` merges in only
+   *  the terminal `response` entry; this returns every event the runner emitted, which
+   *  is what you need to show an agentic job's `llm_call`/`tool_call`/`tool_result`
+   *  sequence rather than just its final answer. */
+  getJobLogs(jobId: string): Promise<JobLogEntry[]>
   /** Public, unauthenticated — AMC's runner fleet snapshot: canonical `state`, queue
    *  counts, GPU, loaded models, and per-runner detail in `runners`. */
   getRunnerStatus(): Promise<RunnerStatus>
@@ -106,14 +112,6 @@ export interface AmcClient {
   updateNote(noteId: string, body: string): Promise<Note>
   /** Deletes a Note. */
   deleteNote(noteId: string): Promise<void>
-}
-
-interface JobLogEntry {
-  id: string
-  jobId: string
-  type: string
-  content: string
-  createdAt: string
 }
 
 interface RequestOptions extends RequestInit {
@@ -211,6 +209,10 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
 
     getJob(jobId) {
       return fetchJob(jobId)
+    },
+
+    getJobLogs(jobId) {
+      return request<JobLogEntry[]>(`/api/jobs/${jobId}/logs`, { auth: true })
     },
 
     getRunnerStatus() {
