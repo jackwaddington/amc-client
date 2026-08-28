@@ -12,6 +12,7 @@ import type {
   NoteTarget,
   NoteListTarget,
   SubmitRawOptions,
+  JobLogEntry,
 } from './types.js'
 import { openEventStream } from './sseStream.js'
 
@@ -36,8 +37,10 @@ export interface AmcClientConfig {
 
 export interface AmcClient {
   /** Submits a single raw Ollama call (model + prompt + systemPrompt, no agent) — the
-   *  only submission path that lets the caller override the system prompt per call; AMC's
-   *  agent-based `/api/jobs` endpoint has no per-call systemPrompt override.
+   *  only submission path that lets the caller override the prompt slots per call; AMC's
+   *  agent-based `/api/jobs` endpoint has no per-call override for any of them.
+   *  `options.promptSuffix` and `options.assistantPrefill` fill the remaining two slots,
+   *  so all four parts of an Agent's prompt anatomy can be varied without creating one.
    *  `options.tag` stamps the Job_Group for later filter/group across submissions.
    *  `options` also carries the standard Ollama sampling knobs (`temperatures` sweep,
    *  `topK`, `topP`, `repeatPenalty`, `numPredict`, `mirostat`), forwarded to Ollama's
@@ -55,6 +58,11 @@ export interface AmcClient {
    *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
    *  record carries neither natively. */
   getJob(jobId: string): Promise<Job>
+  /** Fetches a Job's full execution timeline, oldest first. `getJob` merges in only
+   *  the terminal `response` entry; this returns every event the runner emitted, which
+   *  is what you need to show an agentic job's `llm_call`/`tool_call`/`tool_result`
+   *  sequence rather than just its final answer. */
+  getJobLogs(jobId: string): Promise<JobLogEntry[]>
   /** Public, unauthenticated — AMC's runner fleet snapshot: canonical `state`, queue
    *  counts, GPU, loaded models, and per-runner detail in `runners`. */
   getRunnerStatus(): Promise<RunnerStatus>
@@ -104,14 +112,6 @@ export interface AmcClient {
   updateNote(noteId: string, body: string): Promise<Note>
   /** Deletes a Note. */
   deleteNote(noteId: string): Promise<void>
-}
-
-interface JobLogEntry {
-  id: string
-  jobId: string
-  type: string
-  content: string
-  createdAt: string
 }
 
 interface RequestOptions extends RequestInit {
@@ -179,6 +179,9 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
           model,
           prompt,
           systemPrompt,
+          ...(options?.promptSuffix !== undefined ? { promptSuffix: options.promptSuffix } : {}),
+          ...(options?.assistantPrefill !== undefined ? { assistantPrefill: options.assistantPrefill } : {}),
+          ...(options?.name !== undefined ? { name: options.name } : {}),
           ...(options?.tag !== undefined ? { tag: options.tag } : {}),
           ...(options?.temperatures !== undefined ? { temperatures: options.temperatures } : {}),
           ...(options?.topK !== undefined ? { topK: options.topK } : {}),
@@ -206,6 +209,10 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
 
     getJob(jobId) {
       return fetchJob(jobId)
+    },
+
+    getJobLogs(jobId) {
+      return request<JobLogEntry[]>(`/api/jobs/${jobId}/logs`, { auth: true })
     },
 
     getRunnerStatus() {

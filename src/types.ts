@@ -32,6 +32,17 @@ export interface JobGroup {
 export interface SubmitRawOptions {
   /** Free-text Job_Group tag stamped at submit time for later filter/group. */
   tag?: string
+  /** Job_Group display name (max 60 chars). */
+  name?: string
+  /** Appended after the user prompt in the assembled message list — the same
+   *  `promptSuffix` slot an Agent has, but supplied per call. Raw submission is
+   *  the only path that exposes it without configuring an Agent first. */
+  promptSuffix?: string
+  /** Seeds the start of the assistant's turn, so the model continues from it
+   *  rather than beginning fresh. The same `assistantPrefill` slot an Agent has,
+   *  supplied per call. Cannot be emulated by editing the prompt — it occupies a
+   *  different position in the message list. */
+  assistantPrefill?: string
   /** Temperature sweep: submit one job per value (up to 12) instead of a single call, so
    *  outputs can be compared side by side. Each value must be within [0, 2]. Omit for a
    *  single job with no temperature override (Ollama uses its own default). */
@@ -236,4 +247,18 @@ export interface Note {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** One entry in a Job's execution timeline. `type` is the event kind the runner
+ *  emitted — `skills_loaded`, `llm_call`, `tool_call`, `tool_result`, `response`
+ *  — and `content` its payload (the assembled prompt for `llm_call`, the tool's
+ *  arguments/return value for the tool pair). Kept as a plain string rather than
+ *  a union: the runner may emit kinds this client predates, and dropping them
+ *  would silently truncate a timeline. */
+export interface JobLogEntry {
+  id: string
+  jobId: string
+  type: string
+  content: string
+  createdAt: string
 }
