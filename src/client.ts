@@ -118,6 +118,24 @@ interface RequestOptions extends RequestInit {
   auth?: boolean
 }
 
+/**
+ * AMC sends errors under two different keys: `{ error }` from the API's own error handler
+ * (AppError, schema validation, unique-constraint), and `{ message }` from the auth gate
+ * and admin routes. Reading only one of them left every error from the other shape with an
+ * empty message — and `response.statusText`, the previous fallback, is always an empty
+ * string over HTTP/2, so the status code was lost too. Never returns an empty string:
+ * a caller logging `error.message` must always get something it can act on.
+ */
+function errorMessage(body: unknown, response: Response): string {
+  const envelope = body as { error?: unknown; message?: unknown } | undefined
+  const candidates = [envelope?.message, envelope?.error, response.statusText]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate
+  }
+  return `HTTP ${response.status}`
+}
+
 const DEFAULT_BASE_URL = 'https://amc.jackwaddington.com'
 
 export function createAmcClient(config: AmcClientConfig): AmcClient {
@@ -143,8 +161,7 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
     const body = contentType.includes('application/json') ? await response.json().catch(() => undefined) : undefined
 
     if (!response.ok) {
-      const message = (body as { message?: string } | undefined)?.message ?? response.statusText
-      throw new AmcApiError(response.status, message, body)
+      throw new AmcApiError(response.status, errorMessage(body, response), body)
     }
 
     return body as T

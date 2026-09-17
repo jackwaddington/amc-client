@@ -467,6 +467,50 @@ describe('createAmcClient', () => {
     })
   })
 
+  it("reads AMC's other error envelope, `{ error }`, not just `{ message }`", async () => {
+    // The API's own error handler (AppError, schema validation, unique-constraint) sends
+    // `{ error }`; only the auth gate and admin routes send `{ message }`. Reading one
+    // shape left every error from the other with an empty message.
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ error: 'body/prompt Too small: expected string to have >=1 characters' }, 400),
+    )
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await expect(amc.submitRaw('llama3.2:latest', '', 'sys')).rejects.toMatchObject({
+      name: 'AmcApiError',
+      status: 400,
+      message: 'body/prompt Too small: expected string to have >=1 characters',
+    })
+  })
+
+  it('falls back to the status code rather than an empty message when the body carries no reason', async () => {
+    // `response.statusText` is always '' over HTTP/2, which is how production is served —
+    // so it cannot be the last resort, or the error says nothing at all.
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 502, statusText: '' }))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await expect(amc.submitRaw('llama3.2:latest', 'test', 'sys')).rejects.toMatchObject({
+      name: 'AmcApiError',
+      status: 502,
+      message: 'HTTP 502',
+    })
+  })
+
+  it('prefers a non-empty body reason over statusText', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Model not permitted for this project' }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    await expect(amc.submitRaw('llama3.3:70b', 'test', 'sys')).rejects.toMatchObject({
+      message: 'Model not permitted for this project',
+    })
+  })
+
   it('wraps network failures in an AmcApiError with status 0', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
     const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
