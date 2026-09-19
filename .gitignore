@@ -4,3 +4,7 @@ dist/
 .env.local
 .npmrc
 docs/openapi.json
+/benchmark.ts
+/benchmark-simple.ts
+/benchmark-smoke.ts
+/benchmarks/
