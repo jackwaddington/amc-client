@@ -8,7 +8,7 @@
   "author": "Jack Waddington",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jackwaddington/amc-client.git"
+    "url": "git+https://github.com/jackwaddington/amc-client.git"
   },
   "homepage": "https://jackwaddington.github.io/amc-client/",
   "bugs": "https://github.com/jackwaddington/amc-client/issues",
