@@ -28,6 +28,9 @@ const Job = registry.register(
     output: z.string().optional().describe(
       "Present once AMC has a completed result to show — merged in by getJob() from a separate log entry.",
     ),
+    thinking: z.string().optional().describe(
+      "The model's reasoning behind output, as one block of text. Present only when the model produced any — merged in by getJob() alongside output.",
+    ),
     agentName: z.string().optional().describe('Present for agent-based jobs.'),
     metrics: JobMetric.optional().describe('Present once AMC has recorded timing data for the call.'),
   }),

@@ -81,7 +81,16 @@ you poll, a per-call system-prompt override, Batches, Notes, and runner status.
   portable to a direct Ollama endpoint or another provider that speaks the same options.
 - `getJob(jobId)` — fetches a job, and once it's `complete`, merges in the response log
   content (as `output`) and the latest timing entry (as `metrics`) — AMC's job record has
-  neither natively.
+  neither natively. If the model was a thinking model (qwen3, deepseek-r1, ...) it also
+  merges in its reasoning as `thinking`: one block of plain text, kept apart from
+  `output`, and absent for models that don't think. Show it if you want to expose how
+  the model got there, or ignore it and show only `output`:
+
+  ```ts
+  const job = await amc.getJob(id)
+  if (job.thinking) showReasoning(job.thinking) // optional
+  showAnswer(job.output)
+  ```
 - `getRunnerStatus()` — public, unauthenticated runner fleet snapshot. Read `state`
   (`idle` / `busy` / `starting` / `waking` / `asleep` / `unreachable` / `unknown`): it
   separates a machine resting between jobs, which wakes on demand, from one that has
