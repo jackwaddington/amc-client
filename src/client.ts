@@ -55,8 +55,8 @@ export interface AmcClient {
    *  `options.tag` stamps the Job_Group for later filter/group across submissions. */
   submitJob(agentId: string, prompt: string, options?: { tag?: string; name?: string }): Promise<JobGroup>
   /** Fetches a job by id. Once it's `complete`, also fetches and merges in the response
-   *  log content (as `output`) and the latest timing entry (as `metrics`) — AMC's job
-   *  record carries neither natively. */
+   *  log content (as `output`), the model's reasoning if it produced any (as `thinking`),
+   *  and the latest timing entry (as `metrics`) — AMC's job record carries none natively. */
   getJob(jobId: string): Promise<Job>
   /** Fetches a Job's full execution timeline, oldest first. `getJob` merges in only
    *  the terminal `response` entry; this returns every event the runner emitted, which
@@ -178,11 +178,13 @@ export function createAmcClient(config: AmcClientConfig): AmcClient {
       request<JobMetric[]>(`/api/jobs/${jobId}/metrics`, { auth: true }),
     ])
     const response = [...logs].reverse().find((entry) => entry.type === 'response')
+    const thinking = [...logs].reverse().find((entry) => entry.type === 'thinking')
     const metric = metrics.at(-1)
 
     return {
       ...job,
       ...(response ? { output: response.content } : {}),
+      ...(thinking ? { thinking: thinking.content } : {}),
       ...(metric ? { metrics: metric } : {}),
     }
   }

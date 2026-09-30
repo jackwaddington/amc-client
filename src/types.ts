@@ -15,6 +15,11 @@ export interface Job {
   /** Present once AMC has a completed result to show — merged in by `getJob()` from a
    *  separate log entry, since AMC's job record has no output field of its own. */
   output?: string
+  /** The model's reasoning behind `output`, as one block of plain text. Present only
+   *  when the model produced any (thinking models such as qwen3 or deepseek-r1) —
+   *  absent otherwise, so `job.thinking` being undefined is the normal case. Merged in
+   *  by `getJob()` alongside `output`. Show it, or ignore it and show only `output`. */
+  thinking?: string
   /** Present for agent-based jobs — AMC returns the submitting agent's display name. */
   agentName?: string
   /** Present once AMC has recorded timing data for the call (merged from `/metrics`). */
@@ -250,8 +255,8 @@ export interface Note {
 }
 
 /** One entry in a Job's execution timeline. `type` is the event kind the runner
- *  emitted — `skills_loaded`, `llm_call`, `tool_call`, `tool_result`, `response`
- *  — and `content` its payload (the assembled prompt for `llm_call`, the tool's
+ *  emitted — `skills_loaded`, `llm_call`, `tool_call`, `tool_result`, `response`,
+ *  `thinking` (the model's reasoning, written just before `response`) — and `content` its payload (the assembled prompt for `llm_call`, the tool's
  *  arguments/return value for the tool pair). Kept as a plain string rather than
  *  a union: the runner may emit kinds this client predates, and dropping them
  *  would silently truncate a timeline. */

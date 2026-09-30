@@ -223,6 +223,38 @@ describe('createAmcClient', () => {
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe('https://api.test/api/jobs/job-1/logs')
   })
 
+  it('merges the thinking log into `thinking` beside `output`', async () => {
+    const job = { id: 'job-1', status: 'complete' }
+    const logs = [
+      { id: 'log-1', jobId: 'job-1', type: 'thinking', content: 'Let me work it out.', createdAt: '2026-01-01T00:00:04Z' },
+      { id: 'log-2', jobId: 'job-1', type: 'response', content: 'The answer is 4.', createdAt: '2026-01-01T00:00:05Z' },
+    ]
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(job))
+      .mockResolvedValueOnce(jsonResponse(logs))
+      .mockResolvedValueOnce(jsonResponse([]))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getJob('job-1')
+
+    expect(result).toEqual({ ...job, output: 'The answer is 4.', thinking: 'Let me work it out.' })
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3) // no extra request for thinking
+  })
+
+  it('omits `thinking` entirely for a model that produced none', async () => {
+    const job = { id: 'job-1', status: 'complete' }
+    const logs = [{ id: 'log-2', jobId: 'job-1', type: 'response', content: 'plain', createdAt: '2026-01-01T00:00:05Z' }]
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(job))
+      .mockResolvedValueOnce(jsonResponse(logs))
+      .mockResolvedValueOnce(jsonResponse([]))
+    const amc = createAmcClient({ apiKey: 'amc_sk_test', baseUrl: 'https://api.test' })
+
+    const result = await amc.getJob('job-1')
+
+    expect('thinking' in result).toBe(false)
+  })
+
   it('leaves output unset if a completed job has no response log', async () => {
     const job = { id: 'job-1', status: 'complete' }
     vi.mocked(fetch)
