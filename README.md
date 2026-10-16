@@ -18,6 +18,19 @@ npm install @jackwaddington/amc-client
 Create a Project in the AMC console, then generate an API key from that project's
 Settings tab. Keys are scoped to a single project and can be revoked at any time.
 
+From an AI agent connected to the AMC MCP server, you can do the same without the
+console, except for the reveal:
+
+1. `amc_create_project` creates the Project.
+2. `amc_prepare_api_key` creates a pending key and returns a single-use claim URL.
+   No plaintext key ever passes through MCP.
+3. Open the claim URL while signed in as the project owner, reveal the key once and
+   put it in your `.env` (for example `AMC_API_KEY=amc_sk_...`). Don't paste it into
+   an AI chat.
+
+See AMC's [`docs/specs/api-key-job-submission.md`](https://github.com/jackwaddington/amc/blob/main/docs/specs/api-key-job-submission.md)
+for scopes, expiry and per-key limits.
+
 ## Usage
 
 ```ts
@@ -60,11 +73,15 @@ r = client.chat.completions.create(
 )
 ```
 
-- `POST /v1/chat/completions` — synchronous, non-streaming (`stream: true` returns a
-  400 for now); standard `choices[].message.content` / `usage.*` response shape.
+- `POST /v1/chat/completions` — standard `choices[].message` / `usage.*` response
+  shape; `stream: true` returns OpenAI SSE chunks. Supports tool calling (`tools`,
+  `tool_choice`, `tool` messages) and AMC's `num_ctx` extension for a larger context
+  window (from the Python client: `extra_body={"num_ctx": 16384}`).
 - `GET /v1/models` — model list in OpenAI's shape, for model-picker UIs.
 
 Reach for this when the goal is "plug AMC into something that already talks OpenAI."
+**Tool calling and non-TypeScript projects need this endpoint:** `submitRaw` has no
+`tools` parameter. `GET /v1/models` reports which models support tools.
 Use this SDK instead when you want AMC's own job/agent/batch model: async submission
 you poll, a per-call system-prompt override, Batches, Notes, and runner status.
 
